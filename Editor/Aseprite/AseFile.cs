@@ -68,13 +68,14 @@ namespace Aseprite
             return (T)chunkCache[typeof(T)];
         }
 
-        public Texture2D[] GetFrames()
+        public Texture2D[] GetFrames(string metaLayer = null)
         {
             List<Texture2D> frames = new List<Texture2D>();
 
             for (int i = 0; i < Frames.Count; i++)
             {
-                frames.Add(GetFrame(i));
+                if(GetFrame(i, metaLayer) is Texture2D tex)
+                frames.Add(tex);
             }
 
             return frames.ToArray();
@@ -160,11 +161,13 @@ namespace Aseprite
             return textures;
         }
 
-        public Texture2D GetFrame(int index)
+
+
+        public Texture2D GetFrame(int index, string metaLayer = null)
         {
             Frame frame = Frames[index];
 
-            Texture2D texture = Texture2DUtil.CreateTransparentTexture(Header.Width, Header.Height);
+            Texture2D texture = null;
 
             
             List<LayerChunk> layers = GetChunks<LayerChunk>();
@@ -175,8 +178,16 @@ namespace Aseprite
             for (int i = 0; i < cels.Count; i++)
             {
                 LayerChunk layer = layers[cels[i].LayerIndex];
-                if (layer.LayerName.StartsWith("@")) //ignore metadata layer
+
+                if (metaLayer == null && layer.LayerName.StartsWith("@")) //ignore metadata layer
                     continue;
+                else if (metaLayer != null && !layer.LayerName.StartsWith($"@{metaLayer}"))
+                    continue;
+
+                if(texture == null)
+                {
+                    texture = Texture2DUtil.CreateTransparentTexture(Header.Width, Header.Height);
+                }
 
                 LayerBlendMode blendMode = layer.BlendMode;
                 float opacity = Mathf.Min(layer.Opacity / 255f, cels[i].Opacity / 255f);

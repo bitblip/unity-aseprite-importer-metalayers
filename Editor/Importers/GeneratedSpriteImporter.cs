@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Aseprite;
 using Aseprite.Chunks;
 using Aseprite.Utils;
@@ -18,6 +19,8 @@ namespace AsepriteImporter.Importers {
         private string fileName;
         private string directoryName;
         private string filePath;
+        private string normalMapFilePath;
+        private string maskFilePath;
         private int updateLimit;
         private int rows;
         private int cols;
@@ -34,6 +37,30 @@ namespace AsepriteImporter.Importers {
 
             frames = AsepriteFile.GetFrames();
             BuildAtlas(AssetPath);
+
+            // write normal map texture
+            var normalMapFrames = AsepriteFile.GetFrames("_NormalMap");
+            if(normalMapFrames.Any())
+            {
+                normalMapFilePath = directoryName + "/" + fileName + "_NormalMap" + ".png";
+                WriteMetaImage(AssetPath, normalMapFilePath, normalMapFrames);
+            }
+            else
+            {
+                normalMapFilePath = null;
+            }
+
+            // write mask texture
+            var maskFrames = AsepriteFile.GetFrames("_MaskTex");
+            if(maskFrames.Any())
+            {
+                maskFilePath = directoryName + "/" + fileName + "_Mask" + ".png";
+                WriteMetaImage(AssetPath, maskFilePath, maskFrames);
+            }
+            else
+            {
+                maskFilePath = null;
+            }
         }
 
         protected override bool OnUpdate() {
@@ -43,6 +70,30 @@ namespace AsepriteImporter.Importers {
             }
 
             return false;
+        }
+
+        private void WriteMetaImage(string acePath, string assetpath, Texture2D[] clips)
+        {
+            fileName = Path.GetFileNameWithoutExtension(acePath);
+            directoryName = Path.GetDirectoryName(acePath) + "/" + fileName;
+            if (!AssetDatabase.IsValidFolder(directoryName))
+            {
+                AssetDatabase.CreateFolder(Path.GetDirectoryName(acePath), fileName);
+            }
+
+
+            var atlas = GenerateAtlas(clips);
+
+            try
+            {
+                File.WriteAllBytes(assetpath, atlas.EncodeToPNG());
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e.Message);
+            }
         }
 
         private void BuildAtlas(string acePath) {
@@ -55,6 +106,8 @@ namespace AsepriteImporter.Importers {
             filePath = directoryName + "/" + fileName + ".png";
 
             var atlas = GenerateAtlas(frames);
+
+
             try {
                 File.WriteAllBytes(filePath, atlas.EncodeToPNG());
                 AssetDatabase.SaveAssets();
@@ -62,6 +115,7 @@ namespace AsepriteImporter.Importers {
             } catch (Exception e) {
                 Debug.LogError(e.Message);
             }
+
         }
 
         public Texture2D GenerateAtlas(Texture2D []sprites) {
@@ -122,6 +176,11 @@ namespace AsepriteImporter.Importers {
             atlas.SetPixels(to.x, to.y, to.width, to.height, GetPixels(sprite));
         }
 
+        private void ConfigureNormalMap()
+        {
+
+        }
+
         private bool GenerateSprites() {
             TextureImporter importer = AssetImporter.GetAtPath(filePath) as TextureImporter;
             if (importer == null) {
@@ -132,6 +191,43 @@ namespace AsepriteImporter.Importers {
             importer.spritePixelsPerUnit = Settings.pixelsPerUnit;
             importer.mipmapEnabled = false;
             importer.filterMode = FilterMode.Point;
+
+            // Secondary layers
+            // normal
+            var secondaryTexutres = new List<SecondarySpriteTexture>();
+            if(normalMapFilePath != null) {
+                TextureImporter normalMapImporter = AssetImporter.GetAtPath(normalMapFilePath) as TextureImporter;
+                var normalMapTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(normalMapFilePath);
+                secondaryTexutres.Add(new SecondarySpriteTexture { name = "_NormalMap", texture = normalMapTexture });
+
+                // Update the importer settings on the normal map
+                normalMapImporter.mipmapEnabled = false;
+                normalMapImporter.textureType = TextureImporterType.NormalMap;
+                normalMapImporter.mipmapEnabled = false;
+                normalMapImporter.filterMode = FilterMode.Point;
+                normalMapImporter.textureType = TextureImporterType.NormalMap;
+
+                EditorUtility.SetDirty(normalMapImporter);
+            }
+
+            // mask
+            if (maskFilePath != null)
+            {
+                TextureImporter maskImporter = AssetImporter.GetAtPath(maskFilePath) as TextureImporter;
+                var maskTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(maskFilePath);
+                secondaryTexutres.Add(new SecondarySpriteTexture { name = "_MaskTex", texture = maskTexture });
+
+                maskImporter.mipmapEnabled = false;
+                maskImporter.textureType = TextureImporterType.NormalMap;
+                maskImporter.mipmapEnabled = false;
+                maskImporter.filterMode = FilterMode.Point;
+                maskImporter.textureType = TextureImporterType.Sprite;
+                maskImporter.spritePixelsPerUnit = Settings.pixelsPerUnit;
+
+                EditorUtility.SetDirty(maskImporter);
+            }
+
+            importer.secondarySpriteTextures = secondaryTexutres.ToArray();
 
             var metaList = CreateMetaData(fileName);
             var oldProperties = AseSpritePostProcess.GetPhysicsShapeProperties(importer, metaList);

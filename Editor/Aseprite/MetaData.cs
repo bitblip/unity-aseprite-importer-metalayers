@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Aseprite
 {
-    public enum MetaDataType { UNKNOWN, TRANSFORM };
+    public enum MetaDataType { UNKNOWN, TRANSFORM, NORMAL_MAP, MASK };
 
     public class MetaData
     {
@@ -17,17 +17,29 @@ namespace Aseprite
 
         public MetaData(string layerName)
         {
-            var regex = new Regex("@transform\\(\"(.*)\"\\)");
-            var match = regex.Match(layerName);
-            if (match.Success)
+            var transformRegex = new Regex("@transform\\(\"(.*)\"\\)");
+            var transformMatch = transformRegex.Match(layerName);
+            if (transformMatch.Success)
             {
                 Type = MetaDataType.TRANSFORM;
                 Args = new List<string>();
-                Args.Add(match.Groups[1].Value);
+                Args.Add(transformMatch.Groups[1].Value);
                 Transforms = new Dictionary<int, Vector2>();
+
+                return;
             }
-            else
-                Debug.LogWarning($"Unsupported aseprite metadata {layerName}");
+
+            var normalRegex = new Regex("@normalmap", RegexOptions.IgnoreCase);
+            var normalMapMatch = normalRegex.IsMatch(layerName);
+            if(normalMapMatch)
+            {
+                Type = MetaDataType.NORMAL_MAP;
+                Args = new List<string>();
+
+                return;
+            }
+
+            Debug.LogWarning($"Unsupported aseprite metadata {layerName}");
         }
     }
 }
